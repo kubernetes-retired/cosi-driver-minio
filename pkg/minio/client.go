@@ -22,16 +22,22 @@ import (
 
 	min "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio/pkg/madmin"
 
 	"k8s.io/klog/v2"
 )
+
+type Client struct {
+	minioClient *min.Client
+	adminClient *madmin.AdminClient
+}
 
 type C struct {
 	accessKey string
 	secretKey string
 	host      *url.URL
 
-	client *min.Client
+	client Client
 }
 
 func NewClient(ctx context.Context, minioHost, accessKey, secretKey string) (*C, error) {
@@ -52,23 +58,37 @@ func NewClient(ctx context.Context, minioHost, accessKey, secretKey string) (*C,
 		return nil, errors.New("invalid url scheme for minio endpoint")
 	}
 
-	clChan := make(chan *min.Client)
+	clChan := make(chan Client)
 	errChan := make(chan error)
 	go func() {
 		klog.V(3).InfoS("Connecting to MinIO", "endpoint", host.Host)
 
-		cl, err := min.New(host.Host, &min.Options{
+		client, err := min.New(host.Host, &min.Options{
 			Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 			Secure: secure,
 		})
 		if err != nil {
-			errChan <- err
+			errChan <- errors.Wrap(err, "Creating an MinIO client failed")
+			return
 		}
-		_, err = cl.BucketExists(ctx, uuid.New().String())
+		adminClient, admErr := madmin.New(host.Host, accessKey, secretKey, secure)
+		if admErr != nil {
+			errChan <- errors.Wrap(err, "Creating an admin client failed")
+			return
+		}
+		_, admErr = adminClient.ServerInfo(ctx)
+		if admErr != nil {
+			errChan <- errors.Wrap(err, "Admin client failed to connect to MinIO")
+			return
+		}
+		_, err = client.BucketExists(ctx, uuid.New().String())
 		if err != nil {
 			if errResp, ok := err.(min.ErrorResponse); ok {
 				if errResp.Code == "NoSuchBucket" {
-					clChan <- cl
+					clChan <- Client{
+						minioClient: client,
+						adminClient: adminClient,
+					}
 					return
 				}
 				if errResp.StatusCode == 403 {
@@ -79,8 +99,10 @@ func NewClient(ctx context.Context, minioHost, accessKey, secretKey string) (*C,
 			errChan <- errors.Wrap(err, "Connection to MinIO Failed")
 			return
 		}
-
-		clChan <- cl
+		clChan <- Client{
+			minioClient: client,
+			adminClient: adminClient,
+		}
 		klog.InfoS("Successfully connected to MinIO")
 	}()
 

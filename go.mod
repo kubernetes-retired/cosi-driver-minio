@@ -4,7 +4,8 @@ go 1.15
 
 require (
 	github.com/google/uuid v1.2.0
-	github.com/minio/minio-go/v7 v7.0.10
+	github.com/minio/minio v0.0.0-20210422020608-a7acfa6158ea
+	github.com/minio/minio-go/v7 v7.0.11-0.20210302210017-6ae69c73ce78
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5

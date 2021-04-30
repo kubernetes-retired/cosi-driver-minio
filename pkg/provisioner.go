@@ -15,6 +15,7 @@ package pkg
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
@@ -112,9 +113,14 @@ func (s *ProvisionerServer) ProvisionerDeleteBucket(ctx context.Context,
 func (s *ProvisionerServer) ProvisionerGrantBucketAccess(ctx context.Context,
 	req *cosi.ProvisionerGrantBucketAccessRequest) (*cosi.ProvisionerGrantBucketAccessResponse, error) {
 
+	creds, err := s.mc.AddUser(ctx, req.GetBucketId())
+	if (err!=nil){
+		return nil, err
+	}
+
 	return &cosi.ProvisionerGrantBucketAccessResponse{
-		AccountId:               "minio",
-		CredentialsFileContents: "{\"username\":\"minio\", \"password\": \"minio123\"}",
+		CredentialsFileContents: fmt.Sprintf("[default]\naws_access_key %s\naws_secret_key %s", creds.AccessKey, creds.SecretKey),
+		CredentialsFilePath:     ".aws/credentials",
 	}, nil
 }
 
